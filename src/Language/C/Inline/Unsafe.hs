@@ -16,7 +16,6 @@
 module Language.C.Inline.Unsafe
   ( exp
   , pure
-  , block
   ) where
 
 #if __GLASGOW_HASKELL__ < 710
@@ -43,7 +42,3 @@ exp = genericQuote IO $ inlineExp TH.Unsafe
 -- type safety.
 pure :: TH.QuasiQuoter
 pure = genericQuote Pure $ inlineExp TH.Unsafe
-
--- | C code blocks (i.e. statements).
-block :: TH.QuasiQuoter
-block = genericQuote IO $ inlineItems TH.Unsafe
