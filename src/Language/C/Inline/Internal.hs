@@ -38,7 +38,6 @@ module Language.C.Inline.Internal
       -- | These functions are used to parse the anti-quotations.  They're
       -- exposed for testing purposes, you really should not use them.
     , ParameterType(..)
-    , ParseTypedC(..)
     , parseTypedC
     , runParserInQ
     , splitTypedC
@@ -47,9 +46,7 @@ module Language.C.Inline.Internal
     , genericQuote
     ) where
 
-import           Control.Applicative
-import           Control.Monad (forM, void, msum)
-import           Control.Monad.State (evalStateT, StateT)
+import           Control.Monad (void)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
@@ -63,7 +60,6 @@ import qualified Text.Parsec as Parsec
 import qualified Text.Parsec.Pos as Parsec
 import qualified Text.Parser.Char as Parser
 import qualified Text.Parser.Combinators as Parser
-import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import qualified Data.List as L
@@ -349,12 +345,6 @@ data ParameterType
   = Plain HaskellIdentifier                -- The name of the captured variable
   deriving (Show, Eq)
 
-data ParseTypedC = ParseTypedC
-  { ptcReturnType :: C.Type C.CIdentifier
-  , ptcParameters :: [(C.CIdentifier, C.Type C.CIdentifier, ParameterType)]
-  , ptcBody :: String
-  }
-
 -- To parse C declarations, we're faced with a bit of a problem: we want
 -- to parse the anti-quotations so that Haskell identifiers are
 -- accepted, but we want them to appear only as the root of
@@ -363,40 +353,16 @@ data ParseTypedC = ParseTypedC
 -- the root.
 parseTypedC
   :: forall m. C.CParser HaskellIdentifier m
-  => m ParseTypedC
+  => m (C.Type C.CIdentifier)
   -- ^ Returns the return type, the captured variables, and the body.
 parseTypedC = do
   -- Parse return type (consume spaces first)
   Parser.spaces
-  cRetType <- purgeHaskellIdentifiers =<< C.parseType
-  -- Parse the body
-  void $ Parser.char '{'
-  (cParams, cBody) <- evalStateT parseBody 0
-  return $ ParseTypedC cRetType cParams cBody
+  ret <- purgeHaskellIdentifiers =<< C.parseType
+  _ <- Parser.symbolic ';'
+  pure ret
+
   where
-    parseBody
-      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
-    parseBody = do
-      -- Note that this code does not use "lexing" combinators (apart
-      -- when appropriate) because we want to make sure to preserve
-      -- whitespace after we substitute things.
-      s <- Parser.manyTill Parser.anyChar $
-           Parser.lookAhead (Parser.char '}' <|> Parser.char '$')
-      (decls, s') <- msum
-        [ do Parser.try $ do -- Try because we might fail to parse the 'eof'
-                -- 'symbolic' because we want to consume whitespace
-               void $ Parser.symbolic '}'
-               Parser.eof
-             return ([], "")
-        , do void $ Parser.char '}'
-             (decls, s') <- parseBody
-             return (decls, "}" ++ s')
-        , do void $ Parser.char '$'
-             (decls, s') <- parseBody
-             return (decls, "$" ++ s')
-        ]
-      return (decls, s ++ s')
-      where
 
     -- The @m@ is polymorphic because we use this both for the plain
     -- parser and the StateT parser we use above.  We only need 'fail'.
@@ -430,19 +396,19 @@ genericQuote
   -> TH.QuasiQuoter
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
-    ParseTypedC cType cParams cExp <-
+    cType <-
       runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) parseTypedC
     hsType <- cToHs ctx cType
-    hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
-      case parTy of
-        Plain s' -> do
-          hsTy <- cToHs ctx cTy
-          let hsName = TH.mkName (unHaskellIdentifier s')
-          hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
-          return (hsTy, hsExp)
-    let hsFunType = convertCFunSig hsType $ map fst hsParams
-    let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
-    ioCall <- buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []
+    -- hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
+    --   case parTy of
+    --     Plain s' -> do
+    --       hsTy <- cToHs ctx cTy
+    --       let hsName = TH.mkName (unHaskellIdentifier s')
+    --       hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
+    --       return (hsTy, hsExp)
+    let hsFunType = convertCFunSig hsType []
+    let cParams' = [] -- [(cId, cTy) | (cId, cTy, _) <- cParams]
+    ioCall <- buildFunCall ctx (build hsFunType cType cParams' "TODO") [] []
     -- If the user requested a pure function, make it so.
     case purity of
       Pure -> [| unsafePerformIO $(return ioCall) |]

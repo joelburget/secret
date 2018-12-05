@@ -33,16 +33,13 @@ module Language.C.Types.Parse
     TypeNames
   , CParserContext(..)
     -- ** Default configuration
-  , CIdentifier
-  , unCIdentifier
+  , CIdentifier(..)
   , cIdentifierFromString
   , cCParserContext
 
     -- * Parser type
   , CParser
   , runCParser
-  , quickCParser
-  , quickCParser_
 
     -- * Types and parsing
   -- , identifier
@@ -194,31 +191,6 @@ runCParser
   -> Either Parsec.ParseError a
 runCParser typeNames fn s p = Parsec.parse (runReaderT p typeNames) fn s
 
--- | Useful for quick testing.  Uses @\"quickCParser\"@ as source name, and throws
--- an 'error' if parsing fails.
-quickCParser
-  :: CParserContext i
-  -> String
-  -- ^ String to parse.
-  -> (ReaderT (CParserContext i) (Parsec.Parsec String ()) a)
-  -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
-  -- valid argument.
-  -> a
-quickCParser typeNames s p = case runCParser typeNames "quickCParser" s p of
-  Left err -> error $ "quickCParser: " ++ show err
-  Right x -> x
-
--- | Like 'quickCParser', but uses @'cCParserContext' ('const' 'False')@ as
--- 'CParserContext'.
-quickCParser_
-  :: String
-  -- ^ String to parse.
-  -> (ReaderT (CParserContext CIdentifier) (Parsec.Parsec String ()) a)
-  -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
-  -- valid argument.
-  -> a
-quickCParser_ = quickCParser (cCParserContext HashSet.empty)
-
 cReservedWords :: HashSet.HashSet String
 cReservedWords = HashSet.fromList
   [ "auto", "else", "long", "switch"
@@ -259,10 +231,11 @@ data DeclarationSpecifier
 
 declaration_specifiers :: CParser i m => m [DeclarationSpecifier]
 declaration_specifiers = many1 $ msum
-  [ StorageClassSpecifier <$> storage_class_specifier
-  , TypeSpecifier <$> type_specifier
-  , TypeQualifier <$> type_qualifier
-  , FunctionSpecifier <$> function_specifier
+  [ StorageClassSpecifier  <$> storage_class_specifier
+  , TypeSpecifier          <$> type_specifier
+  , TypeQualifier          <$> type_qualifier
+  , FunctionSpecifier      <$> function_specifier
+  , IslManagementSpecifier <$> isl_management_specifier
   ]
 
 data StorageClassSpecifier
@@ -275,10 +248,10 @@ data StorageClassSpecifier
 
 storage_class_specifier :: CParser i m => m StorageClassSpecifier
 storage_class_specifier = msum
-  [ TYPEDEF <$ reserve cIdentStyle "typedef"
-  , EXTERN <$ reserve cIdentStyle "extern"
-  , STATIC <$ reserve cIdentStyle "static"
-  , AUTO <$ reserve cIdentStyle "auto"
+  [ TYPEDEF  <$ reserve cIdentStyle "typedef"
+  , EXTERN   <$ reserve cIdentStyle "extern"
+  , STATIC   <$ reserve cIdentStyle "static"
+  , AUTO     <$ reserve cIdentStyle "auto"
   , REGISTER <$ reserve cIdentStyle "register"
   ]
 
@@ -676,7 +649,7 @@ many1 p = (:) <$> p <*> many p
 -- 	| BOOL
 -- 	| COMPLEX
 -- 	| IMAGINARY
---  	| STRUCT IDENTIFIER
+-- 	| STRUCT IDENTIFIER
 -- 	| UNION IDENTIFIER
 -- 	| ENUM IDENTIFIER
 -- 	| TYPE_NAME
@@ -703,7 +676,7 @@ many1 p = (:) <$> p <*> many p
 -- 	| direct_declarator '[' type_qualifier_list ']'
 -- 	| direct_declarator '[' type_qualifier_list '*' ']'
 -- 	| direct_declarator '[' '*' ']'
---  	| direct_declarator '[' IDENTIFIER ']'
+-- 	| direct_declarator '[' IDENTIFIER ']'
 -- 	| direct_declarator '[' INTEGER ']'
 -- 	| direct_declarator '[' ']'
 -- 	| direct_declarator '(' parameter_list ')'

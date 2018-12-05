@@ -24,8 +24,7 @@
 
 module Language.C.Types
   ( -- * Types
-    P.CIdentifier
-  , P.unCIdentifier
+    P.CIdentifier(..)
   , P.cIdentifierFromString
   , P.StorageClassSpecifier(..)
   , P.TypeQualifier(..)
@@ -43,8 +42,6 @@ module Language.C.Types
   , P.CParserContext
   , P.cCParserContext
   , P.runCParser
-  , P.quickCParser
-  , P.quickCParser_
   , parseParameterDeclaration
   , parseParameterList
   , parseIdentifier
@@ -199,6 +196,7 @@ untangleDeclarationSpecifiers declSpecs = do
   dataType <- case dataTypes of
     [x] -> return x
     [] | longs > 0 || shorts > 0 -> return P.INT
+    [] | specs == [P.UNSIGNED] -> return P.INT
     [] -> failConversion $ NoDataTypes declSpecs
     _:_ -> failConversion $ MultipleDataTypes declSpecs
   -- Check if things are compatible with one another
