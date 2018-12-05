@@ -2,7 +2,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Control.Monad (void)
 import           Data.Monoid ((<>))
 import           Foreign.C.Types
 import qualified Language.Haskell.TH as TH
@@ -11,8 +10,6 @@ import qualified Test.Hspec as Hspec
 import           Text.RawString.QQ (r)
 
 import qualified Language.C.Inline as C
-import qualified Language.C.Inline.Unsafe as CU
-import qualified Language.C.Inline.Interruptible as CI
 import qualified Language.C.Inline.Internal as C
 import qualified Language.C.Inline.ContextSpec
 import qualified Language.C.Inline.ParseSpec
@@ -66,26 +63,6 @@ main = Hspec.hspec $ do
       x `Hspec.shouldBe` 1 + 4
     Hspec.it "inlineCode" $ do
       francescos_mul 3 4 `Hspec.shouldBe` 12
-    Hspec.it "exp" $ do
-      let x = 3
-      let y = 4
-      z <- [C.exp| int{ $(int x) + $(int y) + 5 } |]
-      z `Hspec.shouldBe` x + y + 5
-    Hspec.it "pure" $ do
-      let x = 2
-      let y = 10
-      let z = [C.pure| int{ $(int x) + 10 + $(int y) } |]
-      z `Hspec.shouldBe` x + y + 10
-    Hspec.it "unsafe exp" $ do
-      let x = 2
-      let y = 10
-      z <- [CU.exp| int{ 7 + $(int x) + $(int y) } |]
-      z `Hspec.shouldBe` x + y + 7
-    Hspec.it "interruptible exp" $ do
-      let x = 2
-      let y = 10
-      z <- [CI.exp| int{ 7 + $(int x) + $(int y) } |]
-      z `Hspec.shouldBe` x + y + 7
     Hspec.it "void exp" $ do
       [C.exp| void { printf("Hello\n") } |]
     Hspec.it "Foreign.C.Types library types" $ do
@@ -93,16 +70,3 @@ main = Hspec.hspec $ do
       sz `Hspec.shouldBe` 1
       um <- [C.exp| uintmax_t { UINTMAX_MAX } |]
       um `Hspec.shouldBe` maxBound
-    Hspec.it "stdint.h types" $ do
-      let x = 2
-      i16 <- [C.exp| int16_t { 1 + $(int16_t x) } |]
-      i16 `Hspec.shouldBe` 3
-      let y = 9
-      u32 <- [C.exp| uint32_t { $(uint32_t y) * 7 } |]
-      u32 `Hspec.shouldBe` 63
-    Hspec.it "Haskell identifiers" $ do
-      let x' = 3
-      void $ [C.exp| int { $(int x') } |]
-      let ä = 3
-      void $ [C.exp| int { $(int ä) } |]
-      void $ [C.exp| int { $(int Prelude.maxBound) } |]

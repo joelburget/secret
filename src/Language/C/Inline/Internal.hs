@@ -50,7 +50,7 @@ module Language.C.Inline.Internal
 
 import           Control.Applicative
 import           Control.Monad (forM, void, msum)
-import           Control.Monad.State (evalStateT, StateT, get, put)
+import           Control.Monad.State (evalStateT, StateT)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
@@ -66,7 +66,6 @@ import qualified Text.Parser.Char as Parser
 import qualified Text.Parser.Combinators as Parser
 import qualified Text.Parser.LookAhead as Parser
 import qualified Text.Parser.Token as Parser
-import           Text.PrettyPrint.ANSI.Leijen ((<+>))
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
 import qualified Data.List as L
 import qualified Data.Char as C
@@ -433,7 +432,7 @@ parseTypedC = do
              (decls, s') <- parseBody
              return (decls, "}" ++ s')
         , do void $ Parser.char '$'
-             (decls1, s1) <- parseEscapedDollar <|> parseTypedCapture
+             (decls1, s1) <- parseEscapedDollar
              (decls2, s2) <- parseBody
              return (decls1 ++ decls2, s1 ++ s2)
         ]
@@ -444,28 +443,6 @@ parseTypedC = do
     parseEscapedDollar = do
       void $ Parser.char '$'
       return ([], "$")
-
-    parseTypedCapture
-      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
-    parseTypedCapture = do
-      void $ Parser.symbolic '('
-      decl <- C.parseParameterDeclaration
-      declType <- purgeHaskellIdentifiers $ C.parameterDeclarationType decl
-      -- Purge the declaration type of all the Haskell identifiers.
-      hId <- case C.parameterDeclarationId decl of
-        Nothing -> fail $ pretty80 $
-          "Un-named captured variable in decl" <+> PP.pretty decl
-        Just hId -> return hId
-      id' <- freshId $ mangleHaskellIdentifier hId
-      void $ Parser.char ')'
-      return ([(id', declType, Plain hId)], C.unCIdentifier id')
-
-    freshId s = do
-      c <- get
-      put $ c + 1
-      case C.cIdentifierFromString (C.unCIdentifier s ++ "_inline_c_" ++ show c) of
-        Left _err -> error "freshId: The impossible happened"
-        Right x -> return x
 
     -- The @m@ is polymorphic because we use this both for the plain
     -- parser and the StateT parser we use above.  We only need 'fail'.
@@ -500,7 +477,7 @@ genericQuote
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
     ParseTypedC cType cParams cExp <-
-      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) $ parseTypedC
+      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) parseTypedC
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of

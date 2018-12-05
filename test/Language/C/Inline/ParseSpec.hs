@@ -30,15 +30,6 @@ import qualified Language.C.Types as C
 spec :: Hspec.SpecWith ()
 spec = do
   Hspec.describe "parsing" $ do
-    Hspec.it "parses simple C expression" $ do
-      (retType, params, cExp) <- goodParse [r|
-          int { (int) ceil($(double x) + ((double) $(float y))) }
-        |]
-      retType `Hspec.shouldBe` (cty "int")
-      params `shouldMatchParameters` [(cty "double", Plain "x"), (cty "float", Plain "y")]
-      cExp `shouldMatchBody` " (int) ceil(x[a-z0-9_]+ \\+ ((double) y[a-z0-9_]+)) "
-    Hspec.it "accepts anti quotes" $ do
-      void $ goodParse [r| int { $(int x) } |]
     Hspec.it "rejects if bad braces (1)" $ do
       badParse [r| int x |]
     Hspec.it "rejects if bad braces (2)" $ do
@@ -51,21 +42,6 @@ spec = do
       retType `Hspec.shouldBe` (cty "double (*)(double)")
       params `shouldMatchParameters` []
       cExp `shouldMatchBody` " &cos "
-    Hspec.it "parses Haskell identifier (1)" $ do
-      (retType, params, cExp) <- goodParse [r| double { $(double x') } |]
-      retType `Hspec.shouldBe` (cty "double")
-      params `shouldMatchParameters` [(cty "double", Plain "x'")]
-      cExp `shouldMatchBody` " x[a-z0-9_]+ "
-    Hspec.it "parses Haskell identifier (2)" $ do
-      (retType, params, cExp) <- goodParse [r| double { $(double ä') } |]
-      retType `Hspec.shouldBe` (cty "double")
-      params `shouldMatchParameters` [(cty "double", Plain "ä'")]
-      cExp `shouldMatchBody` " [a-z0-9_]+ "
-    Hspec.it "parses Haskell identifier (3)" $ do
-      (retType, params, cExp) <- goodParse [r| int { $(int Foo.bar) } |]
-      retType `Hspec.shouldBe` (cty "int")
-      params `shouldMatchParameters` [(cty "int", Plain "Foo.bar")]
-      cExp `shouldMatchBody` " Foobar[a-z0-9_]+ "
     Hspec.it "does not parse Haskell identifier in bad position" $ do
       badParse [r| double (*)(double Foo.bar) { 3.0 } |]
   where
