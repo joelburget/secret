@@ -56,7 +56,6 @@ import           Control.Monad (forM, void, msum)
 import           Control.Monad.State (evalStateT, StateT, get, put)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
-import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
 import           Data.Typeable (Typeable, cast)
@@ -408,7 +407,6 @@ fromSomeEq (SomeEq x) = cast x
 
 data ParameterType
   = Plain HaskellIdentifier                -- The name of the captured variable
-  | AntiQuote AntiQuoterId SomeEq
   deriving (Show, Eq)
 
 data ParseTypedC = ParseTypedC
@@ -425,9 +423,9 @@ data ParseTypedC = ParseTypedC
 -- the root.
 parseTypedC
   :: forall m. C.CParser HaskellIdentifier m
-  => AntiQuoters -> m ParseTypedC
+  => m ParseTypedC
   -- ^ Returns the return type, the captured variables, and the body.
-parseTypedC antiQs = do
+parseTypedC = do
   -- Parse return type (consume spaces first)
   Parser.spaces
   cRetType <- purgeHaskellIdentifiers =<< C.parseType
@@ -454,22 +452,12 @@ parseTypedC antiQs = do
              (decls, s') <- parseBody
              return (decls, "}" ++ s')
         , do void $ Parser.char '$'
-             (decls1, s1) <- parseEscapedDollar <|> parseAntiQuote <|> parseTypedCapture
+             (decls1, s1) <- parseEscapedDollar <|> parseTypedCapture
              (decls2, s2) <- parseBody
              return (decls1 ++ decls2, s1 ++ s2)
         ]
       return (decls, s ++ s')
       where
-
-    parseAntiQuote
-      :: StateT Int m ([(C.CIdentifier, C.Type C.CIdentifier, ParameterType)], String)
-    parseAntiQuote = msum
-      [ do void $ Parser.try (Parser.string $ antiQId ++ ":") Parser.<?> "anti quoter id"
-           (s, cTy, x) <- aqParser antiQ
-           id' <- freshId s
-           return ([(id', cTy, AntiQuote antiQId (toSomeEq x))], C.unCIdentifier id')
-      | (antiQId, SomeAntiQuoter antiQ) <- Map.toList antiQs
-      ]
 
     parseEscapedDollar :: StateT Int m ([a], String)
     parseEscapedDollar = do
@@ -531,7 +519,7 @@ genericQuote
 genericQuote purity build = quoteCode $ \s -> do
     ctx <- getContext
     ParseTypedC cType cParams cExp <-
-      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) $ parseTypedC $ ctxAntiQuoters ctx
+      runParserInQ s (typeNamesFromTypesTable (ctxTypesTable ctx)) $ parseTypedC
     hsType <- cToHs ctx cType
     hsParams <- forM cParams $ \(_cId, cTy, parTy) -> do
       case parTy of
@@ -540,17 +528,6 @@ genericQuote purity build = quoteCode $ \s -> do
           let hsName = TH.mkName (unHaskellIdentifier s')
           hsExp <- [| \cont -> cont ($(TH.varE hsName) :: $(return hsTy)) |]
           return (hsTy, hsExp)
-        AntiQuote antiId dyn -> do
-          case Map.lookup antiId (ctxAntiQuoters ctx) of
-            Nothing ->
-              fail $ "IMPOSSIBLE: could not find anti-quoter " ++ show antiId ++
-                     ". (genericQuote)"
-            Just (SomeAntiQuoter antiQ) -> case fromSomeEq dyn of
-              Nothing ->
-                fail  $ "IMPOSSIBLE: could not cast value for anti-quoter " ++
-                        show antiId ++ ". (genericQuote)"
-              Just x ->
-                aqMarshaller antiQ purity (ctxTypesTable ctx) cTy x
     let hsFunType = convertCFunSig hsType $ map fst hsParams
     let cParams' = [(cId, cTy) | (cId, cTy, _) <- cParams]
     ioCall <- buildFunCall ctx (build hsFunType cType cParams' cExp) (map snd hsParams) []

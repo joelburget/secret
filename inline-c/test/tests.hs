@@ -5,8 +5,6 @@
 import           Control.Monad (void)
 import           Data.Monoid ((<>))
 import           Foreign.C.Types
-import           Foreign.ForeignPtr (mallocForeignPtrBytes)
-import           Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import qualified Language.Haskell.TH as TH
 import           Prelude
 import qualified Test.Hspec as Hspec
@@ -20,8 +18,6 @@ import qualified Language.C.Inline.ContextSpec
 import qualified Language.C.Inline.ParseSpec
 import qualified Language.C.Types as C
 import qualified Language.C.Types.ParseSpec
-
-import           Dummy
 
 C.context (C.baseCtx <> C.fptrCtx <> C.funCtx <> C.vecCtx <> C.bsCtx)
 
@@ -104,62 +100,6 @@ main = Hspec.hspec $ do
       let y = 9
       u32 <- [C.exp| uint32_t { $(uint32_t y) * 7 } |]
       u32 `Hspec.shouldBe` 63
-    Hspec.it "foreign pointer argument" $ do
-      fptr <- mallocForeignPtrBytes 32
-      ptr <- [C.exp| int* { $fptr-ptr:(int *fptr) } |]
-      ptr `Hspec.shouldBe` unsafeForeignPtrToPtr fptr
-    Hspec.it "function pointer argument" $ do
-      let ackermann m n
-            | m == 0 = n + 1
-            | m > 0 && n == 0 = ackermann (m - 1) 1
-            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
-            | otherwise = error "ackermann"
-      ackermannPtr <- $(C.mkFunPtr [t| CInt -> CInt -> IO CInt |]) $ \m n -> return $ ackermann m n
-      let x = 3
-      let y = 4
-      z <- [C.exp| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
-      z `Hspec.shouldBe` ackermann x y
-    Hspec.it "function pointer result" $ do
-      c_add <- [C.exp| int (*)(int, int) { &francescos_add } |]
-      x <- $(C.peekFunPtr [t| CInt -> CInt -> IO CInt |]) c_add 1 2
-      x `Hspec.shouldBe` 1 + 2
-    Hspec.it "quick function pointer argument" $ do
-      let ackermann m n
-            | m == 0 = n + 1
-            | m > 0 && n == 0 = ackermann (m - 1) 1
-            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
-            | otherwise = error "ackermann"
-      let ackermann_ m n = return $ ackermann m n
-      let x = 3
-      let y = 4
-      z <- [C.exp| int { $fun:(int (*ackermann_)(int, int))($(int x), $(int y)) } |]
-      z `Hspec.shouldBe` ackermann x y
-    Hspec.it "function pointer argument (pure)" $ do
-      let ackermann m n
-            | m == 0 = n + 1
-            | m > 0 && n == 0 = ackermann (m - 1) 1
-            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
-            | otherwise = error "ackermann"
-      ackermannPtr <- $(C.mkFunPtr [t| CInt -> CInt -> CInt |]) ackermann
-      let x = 3
-      let y = 4
-      let z = [C.pure| int { $(int (*ackermannPtr)(int, int))($(int x), $(int y)) } |]
-      z `Hspec.shouldBe` ackermann x y
-    Hspec.it "quick function pointer argument (pure)" $ do
-      let ackermann m n
-            | m == 0 = n + 1
-            | m > 0 && n == 0 = ackermann (m - 1) 1
-            | m > 0 && n > 0 = ackermann (m - 1) (ackermann m (n - 1))
-            | otherwise = error "ackermann"
-      let x = 3
-      let y = 4
-      let z = [C.pure| int { $fun:(int (*ackermann)(int, int))($(int x), $(int y)) } |]
-      z `Hspec.shouldBe` ackermann x y
-    Hspec.it "test mkFunPtrFromName" $ do
-      fun <- $(C.mkFunPtrFromName 'dummyFun)
-      z <- [C.exp| double { $(double (*fun)(double))(3.0) } |]
-      z' <- dummyFun 3.0
-      z `Hspec.shouldBe` z'
     Hspec.it "Haskell identifiers" $ do
       let x' = 3
       void $ [C.exp| int { $(int x') } |]
