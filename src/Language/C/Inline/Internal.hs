@@ -392,17 +392,11 @@ parseTypedC = do
              (decls, s') <- parseBody
              return (decls, "}" ++ s')
         , do void $ Parser.char '$'
-             (decls1, s1) <- parseEscapedDollar
-             (decls2, s2) <- parseBody
-             return (decls1 ++ decls2, s1 ++ s2)
+             (decls, s') <- parseBody
+             return (decls, "$" ++ s')
         ]
       return (decls, s ++ s')
       where
-
-    parseEscapedDollar :: StateT Int m ([a], String)
-    parseEscapedDollar = do
-      void $ Parser.char '$'
-      return ([], "$")
 
     -- The @m@ is polymorphic because we use this both for the plain
     -- parser and the StateT parser we use above.  We only need 'fail'.
