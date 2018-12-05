@@ -485,10 +485,10 @@ quoteCode
   -- ^ The parser
   -> TH.QuasiQuoter
 quoteCode p = TH.QuasiQuoter
-  { TH.quoteExp = p
-  , TH.quotePat = fail "inline-c: quotePat not implemented (quoteCode)"
+  { TH.quoteExp  = p
+  , TH.quotePat  = fail "inline-c: quotePat not implemented (quoteCode)"
   , TH.quoteType = fail "inline-c: quoteType not implemented (quoteCode)"
-  , TH.quoteDec = fail "inline-c: quoteDec not implemented (quoteCode)"
+  , TH.quoteDec  = fail "inline-c: quoteDec not implemented (quoteCode)"
   }
 
 genericQuote
