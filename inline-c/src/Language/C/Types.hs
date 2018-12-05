@@ -106,20 +106,21 @@ data Specifiers = Specifiers
   { storageClassSpecifiers :: [P.StorageClassSpecifier]
   , typeQualifiers :: [P.TypeQualifier]
   , functionSpecifiers :: [P.FunctionSpecifier]
+  , islManagementSpecifiers :: [P.IslManagementSpecifier]
   } deriving (Typeable, Show, Eq)
 
 #if MIN_VERSION_base(4,9,0)
 instance Semigroup Specifiers where
-  Specifiers x1 y1 z1 <> Specifiers x2 y2 z2 =
-    Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
+  Specifiers w1 x1 y1 z1 <> Specifiers w2 x2 y2 z2 =
+    Specifiers (w1 ++ w2) (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
 #endif
 
 instance Monoid Specifiers where
-  mempty = Specifiers [] [] []
+  mempty = Specifiers [] [] [] []
 
 #if !MIN_VERSION_base(4,11,0)
-  mappend (Specifiers x1 y1 z1) (Specifiers x2 y2 z2) =
-    Specifiers (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
+  mappend (Specifiers w1 x1 y1 z1) (Specifiers w2 x2 y2 z2) =
+    Specifiers (w1 ++ w2) (x1 ++ x2) (y1 ++ y2) (z1 ++ z2)
 #endif
 
 data Type i
@@ -167,12 +168,14 @@ untangleParameterDeclaration P.ParameterDeclaration{..} = do
 untangleDeclarationSpecifiers
   :: [P.DeclarationSpecifier] -> Either UntangleErr (Specifiers, TypeSpecifier)
 untangleDeclarationSpecifiers declSpecs = do
-  let (pStorage, pTySpecs, pTyQuals, pFunSpecs) = flip execState ([], [], [], []) $ do
-        forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
-          P.StorageClassSpecifier x -> modify $ \(a, b, c, d) -> (x:a, b, c, d)
-          P.TypeSpecifier x -> modify $ \(a, b, c, d) -> (a, x:b, c, d)
-          P.TypeQualifier x -> modify $ \(a, b, c, d) -> (a, b, x:c, d)
-          P.FunctionSpecifier x -> modify $ \(a, b, c, d) -> (a, b, c, x:d)
+  let (pStorage, pTySpecs, pTyQuals, pFunSpecs, pIslSpecs) =
+        flip execState ([], [], [], [], []) $ do
+          forM_ (reverse declSpecs) $ \declSpec -> case declSpec of
+            P.StorageClassSpecifier x -> modify $ \(a, b, c, d, e) -> (x:a, b, c, d, e)
+            P.TypeSpecifier x -> modify $ \(a, b, c, d, e) -> (a, x:b, c, d, e)
+            P.TypeQualifier x -> modify $ \(a, b, c, d, e) -> (a, b, x:c, d, e)
+            P.FunctionSpecifier x -> modify $ \(a, b, c, d, e) -> (a, b, c, x:d, e)
+            P.IslManagementSpecifier x -> modify $ \(a, b, c, d, e) -> (a, b, c, d, x:e)
   -- Split data type and specifiers
   let (dataTypes, specs) =
         partition (\x -> not (x `elem` [P.SIGNED, P.UNSIGNED, P.LONG, P.SHORT])) pTySpecs
@@ -240,7 +243,7 @@ untangleDeclarationSpecifiers declSpecs = do
           return Double
     _ -> do
       error $ "untangleDeclarationSpecifiers impossible: " ++ show dataType
-  return (Specifiers pStorage pTyQuals pFunSpecs, tySpec)
+  return (Specifiers pStorage pTyQuals pFunSpecs pIslSpecs, tySpec)
 
 untangleDeclarator
   :: forall i. Type i -> P.Declarator i -> Either UntangleErr (i, Type i)
@@ -367,7 +370,7 @@ tangleParameterDeclaration (ParameterDeclaration mbId ty00) =
         goConcreteDirect ty0 $ P.DeclaratorParens $ P.Declarator ptrs direct
 
 tangleTypeSpecifier :: Specifiers -> TypeSpecifier -> [P.DeclarationSpecifier]
-tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
+tangleTypeSpecifier (Specifiers storages tyQuals funSpecs islSpecs) tySpec =
   let pTySpecs = case tySpec of
         Void -> [P.VOID]
         Char Nothing -> [P.CHAR]
@@ -390,6 +393,7 @@ tangleTypeSpecifier (Specifiers storages tyQuals funSpecs) tySpec =
   in map P.StorageClassSpecifier storages ++
      map P.TypeQualifier tyQuals ++
      map P.FunctionSpecifier funSpecs ++
+     map P.IslManagementSpecifier islSpecs ++
      map P.TypeSpecifier pTySpecs
 
 ------------------------------------------------------------------------
@@ -410,10 +414,10 @@ describeType ty0 = case ty0 of
   Proto retTy params ->
      "function from" <+> engParams params <> "returning" <+> describeType retTy
   where
-    engSpecs (Specifiers [] [] []) = ""
-    engSpecs (Specifiers x y z) =
-      let xs = map P.StorageClassSpecifier x ++ map P.TypeQualifier y ++
-               map P.FunctionSpecifier z
+    engSpecs (Specifiers [] [] [] []) = ""
+    engSpecs (Specifiers w x y z) =
+      let xs = map P.StorageClassSpecifier w ++ map P.TypeQualifier x ++
+               map P.FunctionSpecifier y ++ map P.IslManagementSpecifier z
       in PP.hsep (map PP.pretty xs) <> " "
 
     engQuals = PP.hsep . map PP.pretty

@@ -57,6 +57,8 @@ module Language.C.Types.Parse
   , type_qualifier
   , FunctionSpecifier(..)
   , function_specifier
+  , IslManagementSpecifier(..)
+  , isl_management_specifier
   , Declarator(..)
   , declarator
   , DirectDeclarator(..)
@@ -227,6 +229,8 @@ cReservedWords = HashSet.fromList
   , "continue", "goto", "sizeof", "volatile"
   , "default", "if", "static", "while"
   , "do", "int", "struct", "double"
+
+  , "__isl_give", "__isl_null", "__isl_take", "__isl_keep"
   ]
 
 cIdentStart :: [Char]
@@ -250,6 +254,7 @@ data DeclarationSpecifier
   | TypeSpecifier TypeSpecifier
   | TypeQualifier TypeQualifier
   | FunctionSpecifier FunctionSpecifier
+  | IslManagementSpecifier IslManagementSpecifier
   deriving (Typeable, Eq, Show)
 
 declaration_specifiers :: CParser i m => m [DeclarationSpecifier]
@@ -372,6 +377,28 @@ data FunctionSpecifier
 function_specifier :: CParser i m => m FunctionSpecifier
 function_specifier = msum
   [ INLINE <$ reserve cIdentStyle "inline"
+  ]
+
+data IslManagementSpecifier
+  = IslGive
+  | IslNull
+  | IslTake
+  | IslKeep
+  deriving (Typeable, Eq, Show)
+
+instance Pretty IslManagementSpecifier where
+  pretty spec = case spec of
+    IslGive -> "__isl_give"
+    IslNull -> "__isl_null"
+    IslTake -> "__isl_take"
+    IslKeep -> "__isl_keep"
+
+isl_management_specifier :: CParser i m => m IslManagementSpecifier
+isl_management_specifier = msum
+  [ IslGive <$ reserve cIdentStyle "__isl_give"
+  , IslNull <$ reserve cIdentStyle "__isl_null"
+  , IslTake <$ reserve cIdentStyle "__isl_take"
+  , IslKeep <$ reserve cIdentStyle "__isl_keep"
   ]
 
 data Declarator i = Declarator
@@ -499,6 +526,7 @@ instance Pretty DeclarationSpecifier where
     TypeSpecifier x -> pretty x
     TypeQualifier x -> pretty x
     FunctionSpecifier x -> pretty x
+    IslManagementSpecifier x -> pretty x
 
 instance Pretty StorageClassSpecifier where
   pretty storage = case storage of

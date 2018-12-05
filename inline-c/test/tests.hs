@@ -4,7 +4,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Monad (void)
 import           Data.Monoid ((<>))
-import qualified Data.Vector.Storable.Mutable as V
 import           Foreign.C.Types
 import           Foreign.ForeignPtr (mallocForeignPtrBytes)
 import           Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
@@ -94,9 +93,6 @@ main = Hspec.hspec $ do
     Hspec.it "void exp" $ do
       [C.exp| void { printf("Hello\n") } |]
     Hspec.it "Foreign.C.Types library types" $ do
-      let x = 1
-      pd <- [C.block| ptrdiff_t { char a[2]; return &a[1] - &a[0] + $(ptrdiff_t x); } |]
-      pd `Hspec.shouldBe` 2
       sz <- [C.exp| size_t { sizeof (char) } |]
       sz `Hspec.shouldBe` 1
       um <- [C.exp| uintmax_t { UINTMAX_MAX } |]
@@ -164,40 +160,6 @@ main = Hspec.hspec $ do
       z <- [C.exp| double { $(double (*fun)(double))(3.0) } |]
       z' <- dummyFun 3.0
       z `Hspec.shouldBe` z'
-    Hspec.it "vectors" $ do
-      let n = 10
-      vec <- V.replicate (fromIntegral n) 3
-      sum' <- V.unsafeWith vec $ \ptr -> [C.block| int {
-        int i;
-        int x = 0;
-        for (i = 0; i < $(int n); i++) {
-          x += $(int *ptr)[i];
-        }
-        return x;
-      } |]
-      sum' `Hspec.shouldBe` 3 * 10
-    Hspec.it "quick vectors" $ do
-      vec <- V.replicate 10 3
-      sum' <- [C.block| int {
-        int i;
-        int x = 0;
-        for (i = 0; i < $vec-len:vec; i++) {
-          x += $vec-ptr:(int *vec)[i];
-        }
-        return x;
-      } |]
-      sum' `Hspec.shouldBe` 3 * 10
-    Hspec.it "bytestrings" $ do
-      let bs = "foo"
-      bits <- [C.block| int {
-          int i, bits = 0;
-          for (i = 0; i < $bs-len:bs; i++) {
-            char ch = $bs-ptr:bs[i];
-            bits += (ch * 01001001001ULL & 042104210421ULL) % 017;
-          }
-          return bits;
-        } |]
-      bits `Hspec.shouldBe` 16
     Hspec.it "Haskell identifiers" $ do
       let x' = 3
       void $ [C.exp| int { $(int x') } |]
