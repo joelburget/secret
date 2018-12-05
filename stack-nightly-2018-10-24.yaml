@@ -1,5 +1,3 @@
 resolver: nightly-2018-10-24
 packages:
 - inline-c
-- inline-c-cpp
-- sample-cabal-project
