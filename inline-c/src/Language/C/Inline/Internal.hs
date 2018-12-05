@@ -38,9 +38,6 @@ module Language.C.Inline.Internal
       --
       -- | These functions are used to parse the anti-quotations.  They're
       -- exposed for testing purposes, you really should not use them.
-    , SomeEq
-    , toSomeEq
-    , fromSomeEq
     , ParameterType(..)
     , ParseTypedC(..)
     , parseTypedC
@@ -58,7 +55,7 @@ import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
 import           Data.Traversable (for)
-import           Data.Typeable (Typeable, cast)
+import           Data.Typeable (Typeable)
 import qualified Language.Haskell.TH as TH
 import qualified Language.Haskell.TH.Quote as TH
 import qualified Language.Haskell.TH.Syntax as TH
@@ -388,22 +385,6 @@ runParserInQ s typeNames' p = do
       fail $ show err
     Right res -> do
       return res
-
-data SomeEq = forall a. (Typeable a, Eq a) => SomeEq a
-
-instance Eq SomeEq where
-  SomeEq x == SomeEq y = case cast x of
-    Nothing -> False
-    Just x' -> x' == y
-
-instance Show SomeEq where
-  show _ = "<<SomeEq>>"
-
-toSomeEq :: (Eq a, Typeable a) => a -> SomeEq
-toSomeEq x = SomeEq x
-
-fromSomeEq :: (Eq a, Typeable a) => SomeEq -> Maybe a
-fromSomeEq (SomeEq x) = cast x
 
 data ParameterType
   = Plain HaskellIdentifier                -- The name of the captured variable
