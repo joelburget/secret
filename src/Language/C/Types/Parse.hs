@@ -84,6 +84,7 @@ module Language.C.Types.Parse
   , cReservedWords
   , isTypeName
   , many1
+  , mySpace
   ) where
 
 import           Control.Applicative
@@ -100,6 +101,7 @@ import           Text.Parser.Char
 import           Text.Parser.Combinators
 import           Text.Parser.LookAhead
 import           Text.Parser.Token
+import           Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Highlight
 import           Text.PrettyPrint.ANSI.Leijen (Pretty(..), (<+>), Doc, hsep)
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -178,6 +180,8 @@ type CParser i m =
   , Hashable i
   )
 
+-- newtype P = P (ReaderT (CParserContext i) (Parsec.Parsec s ()) a)
+
 -- | Runs a @'CParser'@ using @parsec@.
 runCParser
   :: Parsec.Stream s Identity Char
@@ -221,6 +225,13 @@ cIdentStyle = IdentifierStyle
   , _styleHighlight = Highlight.Identifier
   , _styleReservedHighlight = Highlight.ReservedIdentifier
   }
+
+commentStyle :: CommentStyle
+commentStyle = CommentStyle
+  "" "" "#" False
+
+mySpace :: TokenParsing m => m ()
+mySpace = buildSomeSpaceParser someSpace commentStyle
 
 data DeclarationSpecifier
   = StorageClassSpecifier StorageClassSpecifier
@@ -316,7 +327,7 @@ cidentifier_no_lex :: CParser i m => m CIdentifier
 cidentifier_no_lex = try $ do
   s <- cidentifier_raw
   typeNames <- asks cpcTypeNames
-  pure $ if (HashSet.member s typeNames)
+  pure $ if HashSet.member s typeNames
     then CIdentifier $ unCIdentifier s ++ "_"
     else s
 
@@ -339,7 +350,7 @@ data TypeQualifier
 
 type_qualifier :: CParser i m => m TypeQualifier
 type_qualifier = msum
-  [ CONST <$ reserve cIdentStyle "const"
+  [ CONST    <$ reserve cIdentStyle "const"
   , RESTRICT <$ reserve cIdentStyle "restrict"
   , VOLATILE <$ reserve cIdentStyle "volatile"
   ]
