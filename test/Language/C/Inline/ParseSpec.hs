@@ -25,6 +25,7 @@ import           Control.Applicative ((<*), (*>))
 import           Language.C.Inline.HaskellIdentifier
 import           Language.C.Inline.Internal
 import qualified Language.C.Types as C
+import           Language.C.Types.Parse (many1)
 
 spec :: SpecWith ()
 spec = do
@@ -35,26 +36,18 @@ spec = do
       badParse [r| int { x |]
 
     it "parses an enum" $ do
-      void $ goodParse [r| enum isl_dim_type type; |]
+      void $ goodParse [r| enum isl_dim_type ty; |]
 
     it "parses an isl declaration (1)" $ do
       void $ goodParse [r| isl_ctx *isl_aff_get_ctx(__isl_keep isl_aff *aff); |]
 
-    it "parses an isl declaration (2)" $ do
+    it "parses many isl declarations" $ do
       void $ goodParse [r|
         __isl_give isl_pw_qpolynomial *isl_pw_qpolynomial_alloc(
                 __isl_take isl_set *set,
                 __isl_take isl_qpolynomial *qp);
-        |]
-
-    it "parses an isl declaration (3)" $ do
-      void $ goodParse [r|
         __isl_give isl_pw_multi_aff *isl_pw_multi_aff_copy(
                 __isl_keep isl_pw_multi_aff *pma);
-        |]
-
-    it "parses an isl declaration (4)" $ do
-      void $ goodParse [r|
         __isl_give isl_pw_multi_aff *isl_pw_multi_aff_project_out_map(
                 __isl_take isl_space *space,
                 enum isl_dim_type ty,
@@ -64,7 +57,7 @@ spec = do
     it "parses function pointers" $ do
       void $ goodParse [r| int(int (*add)(int, int)); |]
     it "parses returning function pointers" $ do
-      retType <- goodParse [r| double (*)(double); |]
+      [retType] <- goodParse [r| double (*)(double); |]
       retType `shouldBe` cty "double (*)(double)"
     it "does not parse Haskell identifier in bad position" $ do
       badParse [r| double (*)(double Foo.bar); |]
@@ -118,9 +111,9 @@ spec = do
     -- might be exceptions hiding.  TODO get rid of exceptions.
     strictParse
       :: String
-      -> IO (C.Type C.CIdentifier)
+      -> IO [C.Type C.CIdentifier]
     strictParse s = do
-      let retType = assertParse haskellCParserContext parseTypedC s
+      let retType = assertParse haskellCParserContext (many1 parseTypedC) s
       void $ evaluate $ length $ show retType
       return retType
 

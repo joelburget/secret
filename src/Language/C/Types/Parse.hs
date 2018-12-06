@@ -83,6 +83,7 @@ module Language.C.Types.Parse
   , cIdentLetter
   , cReservedWords
   , isTypeName
+  , many1
   ) where
 
 import           Control.Applicative
