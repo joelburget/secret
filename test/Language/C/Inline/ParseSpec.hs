@@ -36,7 +36,7 @@ spec = do
       badParse [r| int { x |]
 
     it "parses an enum" $ do
-      void $ goodParse [r| enum isl_dim_type ty; |]
+      void $ goodParse [r| enum isl_dim_type type; |]
 
     it "parses an isl declaration (1)" $ do
       void $ goodParse [r| isl_ctx *isl_aff_get_ctx(__isl_keep isl_aff *aff); |]
@@ -50,7 +50,7 @@ spec = do
                 __isl_keep isl_pw_multi_aff *pma);
         __isl_give isl_pw_multi_aff *isl_pw_multi_aff_project_out_map(
                 __isl_take isl_space *space,
-                enum isl_dim_type ty,
+                enum isl_dim_type type,
                 unsigned first, unsigned n);
         |]
 

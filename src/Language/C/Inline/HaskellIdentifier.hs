@@ -17,7 +17,7 @@ module Language.C.Inline.HaskellIdentifier
   ) where
 
 import           Control.Applicative ((<|>))
-import           Control.Monad (when, msum, void)
+import           Control.Monad (msum, void)
 import           Data.Char (ord)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
@@ -27,7 +27,7 @@ import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
 import           Numeric (showHex)
 import           Text.Parser.Char (upper, lower, digit, char)
-import           Text.Parser.Combinators (many, eof, try, unexpected, (<?>))
+import           Text.Parser.Combinators (many, eof, try, (<?>))
 import           Text.Parser.Token (IdentifierStyle(..), highlight, TokenParsing)
 import qualified Text.Parser.Token.Highlight as Highlight
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -144,6 +144,7 @@ identNoLex :: (TokenParsing m, Monad m, IsString s) => IdentifierStyle m -> m s
 identNoLex s = fmap fromString $ try $ do
   name <- highlight (_styleHighlight s)
           ((:) <$> _styleStart s <*> many (_styleLetter s) <?> _styleName s)
-  when (HashSet.member name (_styleReserved s)) $ unexpected $ "reserved " ++ _styleName s ++ " " ++ show name
-  return name
+  pure $ if HashSet.member name (_styleReserved s)
+    then name ++ "_"
+    else name
 

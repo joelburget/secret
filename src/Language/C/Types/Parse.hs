@@ -316,9 +316,9 @@ cidentifier_no_lex :: CParser i m => m CIdentifier
 cidentifier_no_lex = try $ do
   s <- cidentifier_raw
   typeNames <- asks cpcTypeNames
-  when (HashSet.member s typeNames) $
-    unexpected $ "type name " ++ unCIdentifier s
-  return s
+  pure $ if (HashSet.member s typeNames)
+    then CIdentifier $ unCIdentifier s ++ "_"
+    else s
 
 cidentifier :: CParser i m => m CIdentifier
 cidentifier = token cidentifier_no_lex
@@ -328,7 +328,7 @@ type_name = try $ do
   s <- ident cIdentStyle <?> "type name"
   typeNames <- asks cpcTypeNames
   unless (HashSet.member s typeNames) $
-    unexpected $ "identifier  " ++ unCIdentifier s
+    unexpected $ "identifier " ++ unCIdentifier s
   return s
 
 data TypeQualifier
