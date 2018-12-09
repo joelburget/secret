@@ -42,6 +42,7 @@ module Language.C.Types
   , P.CParserContext
   , P.cCParserContext
   , P.runCParser
+  , P.P(..)
   , parseParameterDeclaration
   , parseParameterList
   , parseIdentifier

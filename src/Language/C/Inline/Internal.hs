@@ -333,7 +333,7 @@ runParserInQ s typeNames' p = do
   loc <- TH.location
   let (line, col) = TH.loc_start loc
   let parsecLoc = Parsec.newPos (TH.loc_filename loc) line col
-  let p' = lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
+  let p' = C.P $ lift (Parsec.setPosition parsecLoc) *> p <* lift Parser.eof
   case C.runCParser (haskellCParserContext typeNames') (TH.loc_filename loc) s p' of
     Left err -> do
       -- TODO consider prefixing with "error while parsing C" or similar

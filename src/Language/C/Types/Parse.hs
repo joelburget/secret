@@ -39,6 +39,7 @@ module Language.C.Types.Parse
 
     -- * Parser type
   , CParser
+  , P(..)
   , runCParser
 
     -- * Types and parsing
@@ -84,7 +85,6 @@ module Language.C.Types.Parse
   , cReservedWords
   , isTypeName
   , many1
-  , mySpace
   ) where
 
 import           Control.Applicative
@@ -180,7 +180,20 @@ type CParser i m =
   , Hashable i
   )
 
--- newtype P = P (ReaderT (CParserContext i) (Parsec.Parsec s ()) a)
+-- newtype P i s a = P (ReaderT (CParserContext i) (Parsec.Parsec s ()) a)
+newtype P p a = P { unParser :: p a }
+  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, Parsing, CharParsing, LookAheadParsing)
+
+instance (CharParsing p, TokenParsing p) => TokenParsing (P p) where
+  someSpace   = P $ buildSomeSpaceParser someSpace $ commentStyle
+  nesting     = P . nesting . unParser
+  semi        = token $ char ';' <?> ";"
+  highlight h = P . highlight h . unParser
+  token p     = p <* whiteSpace
+
+commentStyle :: CommentStyle
+commentStyle = CommentStyle
+  "" "" "#" False
 
 -- | Runs a @'CParser'@ using @parsec@.
 runCParser
@@ -190,11 +203,11 @@ runCParser
   -- ^ Source name.
   -> s
   -- ^ String to parse.
-  -> (ReaderT (CParserContext i) (Parsec.Parsec s ()) a)
+  -> P (ReaderT (CParserContext i) (Parsec.Parsec s ())) a
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> Either Parsec.ParseError a
-runCParser typeNames fn s p = Parsec.parse (runReaderT p typeNames) fn s
+runCParser typeNames fn s p = Parsec.parse (runReaderT (unParser p) typeNames) fn s
 
 cReservedWords :: HashSet.HashSet String
 cReservedWords = HashSet.fromList
@@ -225,13 +238,6 @@ cIdentStyle = IdentifierStyle
   , _styleHighlight = Highlight.Identifier
   , _styleReservedHighlight = Highlight.ReservedIdentifier
   }
-
-commentStyle :: CommentStyle
-commentStyle = CommentStyle
-  "" "" "#" False
-
-mySpace :: TokenParsing m => m ()
-mySpace = buildSomeSpaceParser someSpace commentStyle
 
 data DeclarationSpecifier
   = StorageClassSpecifier StorageClassSpecifier
