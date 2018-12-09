@@ -25,7 +25,7 @@ import           Control.Applicative ((<*), (*>))
 import           Language.C.Inline.HaskellIdentifier
 import           Language.C.Inline.Internal
 import qualified Language.C.Types as C
-import           Language.C.Types.Parse (many1, mySpace)
+import           Language.C.Types.Parse (many1)
 
 spec :: SpecWith ()
 spec = do
@@ -64,6 +64,7 @@ spec = do
 
     it "parses interface" $ do
       iface <- readFile "interface"
+      -- iface <- readFile "isl/include/isl"
       void $ goodParse iface
 
   where
@@ -132,9 +133,10 @@ spec = do
       ]
 
     assertParse ctxF p s =
-      case C.runCParser (ctxF islTypes) "spec" s (lift spaces *> p <* lift eof) of
-        Left err -> error $ "Parse error (assertParse): " ++ show err
-        Right x -> x
+      let p' = C.P $ lift spaces *> p <* lift eof
+      in case C.runCParser (ctxF islTypes) "spec" s p' of
+           Left err -> error $ "Parse error (assertParse): " ++ show err
+           Right x -> x
 
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.
@@ -143,7 +145,7 @@ spec = do
       -> IO [C.Type C.CIdentifier]
     strictParse s = do
       let retType = assertParse haskellCParserContext
-            (many1 (parseTypedC <* optional mySpace)) s
+            (many1 parseTypedC) s
       void $ evaluate $ length $ show retType
       return retType
 

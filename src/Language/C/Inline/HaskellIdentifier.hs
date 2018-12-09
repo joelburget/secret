@@ -53,7 +53,7 @@ instance PP.Pretty HaskellIdentifier where
 
 haskellIdentifierFromString :: String -> Either String HaskellIdentifier
 haskellIdentifierFromString s =
-  case C.runCParser cpc "haskellIdentifierFromString" s (parseHaskellIdentifier <* eof) of
+  case C.runCParser cpc "haskellIdentifierFromString" s (C.P (parseHaskellIdentifier <* eof)) of
     Left err -> Left $ show err
     Right x -> Right x
   where

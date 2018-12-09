@@ -90,9 +90,11 @@ spec = do
       x `Hspec.shouldBe` y
 
     assertParse p s =
-      case C.runCParser (C.cCParserContext (typeNamesFromTypesTable baseTypes)) "spec" s (lift spaces *> p <* lift eof) of
-        Left err -> error $ "Parse error (assertParse): " ++ show err
-        Right x -> x
+      let p'  = C.P $ lift spaces *> p <* lift eof
+          ctx = C.cCParserContext $ typeNamesFromTypesTable baseTypes
+      in case C.runCParser ctx "spec" s p' of
+           Left err -> error $ "Parse error (assertParse): " ++ show err
+           Right x  -> x
 
     cty s = C.parameterDeclarationType $ assertParse C.parseParameterDeclaration s
 

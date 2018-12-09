@@ -59,7 +59,7 @@ assertParse
   :: (Hashable i)
   => CParserContext i -> (forall m. CParser i m => m a) -> String -> a
 assertParse ctx p s =
-  case runCParser ctx "spec" s (lift spaces *> p <* lift eof) of
+  case runCParser ctx "spec" s (Types.P (lift spaces *> p <* lift eof)) of
     Left err -> error $ "Parse error (assertParse): " ++ show err
     Right x -> x
 
