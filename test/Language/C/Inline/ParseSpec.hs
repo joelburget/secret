@@ -11,11 +11,11 @@ module Language.C.Inline.ParseSpec (spec) where
 
 import           Control.Exception (evaluate)
 import           Control.Monad (void)
-import           Control.Monad.Trans.Class (lift)
+import           Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import           Test.Hspec
-import           Text.Parser.Char
 import           Text.Parser.Combinators
+import           Text.Parser.Token (whiteSpace)
 import           Text.RawString.QQ (r)
 
 #if __GLASGOW_HASKELL__ < 710
@@ -54,6 +54,38 @@ spec = do
                 unsigned first, unsigned n);
         |]
 
+    it "parses comments" $ do
+      void $ goodParse [r|
+        #ifndef ISL_AFF_H
+        #define ISL_AFF_H
+        #include ...
+        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_copy(
+                __isl_keep isl_pw_multi_aff *pma);
+        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_project_out_map(
+                __isl_take isl_space *space,
+                enum isl_dim_type type,
+                unsigned first, unsigned n);
+        |]
+
+    it "parses inlineC" $ do
+      void $ goodParse' [r|
+        #ifndef ISL_AFF_H
+        #define ISL_AFF_H
+        #include ...
+        #if defined(__cplusplus)
+        extern "C" {
+        #endif
+        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_copy(
+                __isl_keep isl_pw_multi_aff *pma);
+        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_project_out_map(
+                __isl_take isl_space *space,
+                enum isl_dim_type type,
+                unsigned first, unsigned n);
+        #if defined(__cplusplus)
+        }
+        #endif
+        |]
+
     it "parses function pointers" $ do
       void $ goodParse [r| int(int (*add)(int, int)); |]
     it "parses returning function pointers" $ do
@@ -63,9 +95,8 @@ spec = do
       badParse [r| double (*)(double Foo.bar); |]
 
     it "parses interface" $ do
-      iface <- readFile "interface"
-      -- iface <- readFile "isl/include/isl"
-      void $ goodParse iface
+      iface <- readFile "isl/include/isl/aff.h"
+      void $ goodParse' iface
 
   where
     islListableTypes =
@@ -122,6 +153,10 @@ spec = do
       , "isl_fixed_box"
       , "isl_bool"
       , "size_t"
+      , "uint32_t"
+      , "isl_size"
+      , "isl_printer"
+      , "isl_stat"
       ]
 
     mkListIdent (C.CIdentifier x) = C.CIdentifier (x ++ "_list")
@@ -132,11 +167,16 @@ spec = do
       , otherIslValTypes
       ]
 
+    assertParse
+      :: (HashSet C.CIdentifier -> C.CParserContext i)
+      -> C.P i a
+      -> String
+      -> a
     assertParse ctxF p s =
-      let p' = C.P $ lift spaces *> p <* lift eof
+      let p' = whiteSpace *> p <* eof
       in case C.runCParser (ctxF islTypes) "spec" s p' of
            Left err -> error $ "Parse error (assertParse): " ++ show err
-           Right x -> x
+           Right x  -> x
 
     -- We use show + length to fully evaluate the result -- there
     -- might be exceptions hiding.  TODO get rid of exceptions.
@@ -144,13 +184,18 @@ spec = do
       :: String
       -> IO [C.Type C.CIdentifier]
     strictParse s = do
-      let retType = assertParse haskellCParserContext
-            (many1 parseTypedC) s
+      let retType = assertParse haskellCParserContext (many1 parseTypedC) s
       void $ evaluate $ length $ show retType
       return retType
 
     goodParse = strictParse
     badParse s = strictParse s `shouldThrow` anyException
+
+    goodParse' :: String -> IO [Either IslMacro (C.Type C.CIdentifier)]
+    goodParse' s = do
+      let retType = assertParse haskellCParserContext externC s
+      void $ evaluate $ length $ show retType
+      return retType
 
     cty :: String -> C.Type C.CIdentifier
     cty s = C.parameterDeclarationType $

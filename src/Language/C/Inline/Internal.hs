@@ -41,12 +41,15 @@ module Language.C.Inline.Internal
     , parseTypedC
     , runParserInQ
     , splitTypedC
+    , externC
+    , IslMacro
+    , IslMacroType
 
       -- * Utility functions for writing quasiquoters
     , genericQuote
     ) where
 
-import           Control.Monad (void)
+import           Control.Monad (msum, void)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
 import           Data.Maybe (fromMaybe)
@@ -70,6 +73,7 @@ import           Language.C.Inline.Context
 import           Language.C.Inline.FunPtr
 import           Language.C.Inline.HaskellIdentifier
 import qualified Language.C.Types as C
+import qualified Language.C.Types.Parse as P
 
 data ModuleState = ModuleState
   { msContext :: Context
@@ -344,6 +348,59 @@ runParserInQ s typeNames' p = do
 data ParameterType
   = Plain HaskellIdentifier                -- The name of the captured variable
   deriving (Show, Eq)
+
+data IslMacroType
+  = Multi
+  | MultiCmp
+  | MultiNeg
+  | MultiDims
+  | MultiWithDomain
+  | List
+  | ListFn
+  | ListType
+  | ExportedList
+  | ExportedListFn
+  | ExportedListType
+  deriving (Eq, Show)
+
+data IslMacro = IslMacro IslMacroType C.CIdentifier
+  deriving (Eq, Show)
+
+parseIslMacro
+  :: C.CParser HaskellIdentifier m
+  => m IslMacro
+parseIslMacro = do
+  ty <- msum
+    [ MultiCmp         <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_CMP")
+    , MultiNeg         <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_NEG")
+    , MultiDims        <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_DIMS")
+    , MultiWithDomain  <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_WITH_DOMAIN")
+    -- note: must list this after the other ISL_DECLARE_MULTI_* macros. also
+    -- see same trick for List / ExportedList
+    , Multi            <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI")
+    , ListFn           <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST_FN")
+    , ListType         <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST_TYPE")
+    , List             <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST")
+    , ExportedListFn   <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST_FN")
+    , ExportedListType <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST_TYPE")
+    , ExportedList     <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST")
+    ]
+  ident <- Parser.parens $ P.cidentifier
+  pure $ IslMacro ty ident
+
+externC
+  :: C.CParser HaskellIdentifier m
+  => m [Either IslMacro (C.Type C.CIdentifier)]
+externC = do
+  _ <- Parser.reserve P.cIdentStyle "extern"
+  expectC <- Parser.stringLiteral
+  case expectC of
+    "C"  -> pure ()
+    notC -> fail notC
+  Parser.braces $ P.many1 $ msum
+    [ Left  <$> parseIslMacro
+    , Right <$> parseTypedC
+    ]
 
 -- To parse C declarations, we're faced with a bit of a problem: we want
 -- to parse the anti-quotations so that Haskell identifiers are

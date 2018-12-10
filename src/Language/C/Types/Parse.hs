@@ -75,6 +75,8 @@ module Language.C.Types.Parse
   , abstract_declarator
   , DirectAbstractDeclarator(..)
   , direct_abstract_declarator
+  , cIdentStyle
+  , cidentifier
 
     -- * YACC grammar
     -- $yacc
@@ -89,13 +91,13 @@ module Language.C.Types.Parse
 
 import           Control.Applicative
 import           Control.Monad (msum, void, MonadPlus, unless, when)
-import           Control.Monad.Reader (MonadReader, runReaderT, ReaderT, asks, ask)
-import           Data.Functor.Identity (Identity)
+import           Control.Monad.Reader (MonadReader(..), runReaderT, ReaderT, asks)
 import qualified Data.HashSet as HashSet
 import           Data.Hashable (Hashable)
 import           Data.Monoid ((<>))
 import           Data.String (IsString(..))
 import           Data.Typeable (Typeable)
+import           Text.Parsec (Parsec)
 import qualified Text.Parsec as Parsec
 import           Text.Parser.Char
 import           Text.Parser.Combinators
@@ -180,11 +182,15 @@ type CParser i m =
   , Hashable i
   )
 
-newtype P p a = P { unParser :: p a }
+newtype P i a = P { unParser :: ReaderT (CParserContext i) (Parsec String ()) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadPlus, Parsing,
     CharParsing, LookAheadParsing)
 
-instance (CharParsing p, TokenParsing p) => TokenParsing (P p) where
+instance MonadReader (CParserContext i) (P i) where
+  ask = P ask
+  local f (P m) = P $ local f m
+
+instance TokenParsing (P i) where
   someSpace   = P $ buildSomeSpaceParser someSpace $
     CommentStyle "" "" "#" False
   nesting     = P . nesting . unParser
@@ -194,13 +200,12 @@ instance (CharParsing p, TokenParsing p) => TokenParsing (P p) where
 
 -- | Runs a @'CParser'@ using @parsec@.
 runCParser
-  :: Parsec.Stream s Identity Char
-  => CParserContext i
+  :: CParserContext i
   -> String
   -- ^ Source name.
-  -> s
+  -> String
   -- ^ String to parse.
-  -> P (ReaderT (CParserContext i) (Parsec.Parsec s ())) a
+  -> P i a
   -- ^ Parser.  Anything with type @forall m. CParser i m => m a@ is a
   -- valid argument.
   -> Either Parsec.ParseError a
@@ -218,6 +223,7 @@ cReservedWords = HashSet.fromList
   , "do", "int", "struct", "double"
 
   , "__isl_give", "__isl_null", "__isl_take", "__isl_keep"
+  , "__isl_export", "__isl_overload", "__isl_constructor"
   ]
 
 cIdentStart :: [Char]
@@ -245,13 +251,20 @@ data DeclarationSpecifier
   deriving (Typeable, Eq, Show)
 
 declaration_specifiers :: CParser i m => m [DeclarationSpecifier]
-declaration_specifiers = many1 $ msum
-  [ StorageClassSpecifier  <$> storage_class_specifier
-  , TypeSpecifier          <$> type_specifier
-  , TypeQualifier          <$> type_qualifier
-  , FunctionSpecifier      <$> function_specifier
-  , IslManagementSpecifier <$> isl_management_specifier
-  ]
+declaration_specifiers = do
+  -- TODO: we should probably use these specifiers rather than throw them away
+  _ <- many $ msum
+    [ reserve cIdentStyle "__isl_export"
+    , reserve cIdentStyle "__isl_overload"
+    , reserve cIdentStyle "__isl_constructor"
+    ]
+  many1 $ msum
+    [ StorageClassSpecifier  <$> storage_class_specifier
+    , TypeSpecifier          <$> type_specifier
+    , TypeQualifier          <$> type_qualifier
+    , FunctionSpecifier      <$> function_specifier
+    , IslManagementSpecifier <$> isl_management_specifier
+    ]
 
 data StorageClassSpecifier
   = TYPEDEF
