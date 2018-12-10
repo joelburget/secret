@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Language.C.Inline.Internal
     ( -- * Context handling
@@ -49,10 +50,11 @@ module Language.C.Inline.Internal
     , genericQuote
     ) where
 
+import           Control.Applicative
 import           Control.Monad (msum, void)
 import           Control.Monad.Trans.Class (lift)
 import           Data.Foldable (forM_)
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Traversable (for)
 import           Data.Typeable (Typeable)
 import qualified Language.Haskell.TH as TH
@@ -371,36 +373,87 @@ parseIslMacro
   => m IslMacro
 parseIslMacro = do
   ty <- msum
-    [ MultiCmp         <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_CMP")
-    , MultiNeg         <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_NEG")
-    , MultiDims        <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_DIMS")
-    , MultiWithDomain  <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI_WITH_DOMAIN")
+    [ MultiCmp         <$ Parser.try (symbol' "ISL_DECLARE_MULTI_CMP")
+    , MultiNeg         <$ Parser.try (symbol' "ISL_DECLARE_MULTI_NEG")
+    , MultiDims        <$ Parser.try (symbol' "ISL_DECLARE_MULTI_DIMS")
+    , MultiWithDomain  <$ Parser.try (symbol' "ISL_DECLARE_MULTI_WITH_DOMAIN")
     -- note: must list this after the other ISL_DECLARE_MULTI_* macros. also
     -- see same trick for List / ExportedList
-    , Multi            <$ Parser.try (Parser.symbol "ISL_DECLARE_MULTI")
-    , ListFn           <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST_FN")
-    , ListType         <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST_TYPE")
-    , List             <$ Parser.try (Parser.symbol "ISL_DECLARE_LIST")
-    , ExportedListFn   <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST_FN")
-    , ExportedListType <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST_TYPE")
-    , ExportedList     <$ Parser.try (Parser.symbol "ISL_DECLARE_EXPORTED_LIST")
+    , Multi            <$ Parser.try (symbol' "ISL_DECLARE_MULTI")
+    , ListFn           <$ Parser.try (symbol' "ISL_DECLARE_LIST_FN")
+    , ListType         <$ Parser.try (symbol' "ISL_DECLARE_LIST_TYPE")
+    , List             <$ Parser.try (symbol' "ISL_DECLARE_LIST")
+    , ExportedListFn   <$ Parser.try (symbol' "ISL_DECLARE_EXPORTED_LIST_FN")
+    , ExportedListType <$ Parser.try (symbol' "ISL_DECLARE_EXPORTED_LIST_TYPE")
+    , ExportedList     <$ Parser.try (symbol' "ISL_DECLARE_EXPORTED_LIST")
     ]
   ident <- Parser.parens $ P.cidentifier
   pure $ IslMacro ty ident
+
+data Statement
+  = Macro
+  | TypeDef
+  | IslMacroStatement IslMacro
+  | TypedC (C.Type C.CIdentifier)
+  | Other
+
+parseMacro
+  :: C.CParser HaskellIdentifier m
+  => m Statement
+parseMacro = do
+  _ <- Parser.char '#'
+  _ <- Parser.manyTill Parser.anyChar Parser.newline
+  _ <- Parser.whiteSpace
+  pure Macro
+
+parseTypeDef
+  :: C.CParser HaskellIdentifier m
+  => m Statement
+parseTypeDef = do
+  _ <- msum
+    [ symbol' "enum"
+    , symbol' "typedef"
+    , symbol' "struct"
+    ]
+  _ <- Parser.manyTill Parser.anyChar Parser.semi
+  _ <- Parser.whiteSpace
+  pure TypeDef
+
+(<&>) :: [a] -> (a -> b) -> [b]
+(<&>) = flip (<$>)
+
+symbol' :: Parser.TokenParsing m => String -> m String
+symbol' = Parser.try . Parser.symbol
 
 externC
   :: C.CParser HaskellIdentifier m
   => m [Either IslMacro (C.Type C.CIdentifier)]
 externC = do
+  _ <- Parser.many (parseMacro <|> parseTypeDef)
   _ <- Parser.reserve P.cIdentStyle "extern"
   expectC <- Parser.stringLiteral
   case expectC of
     "C"  -> pure ()
     notC -> fail notC
-  Parser.braces $ P.many1 $ msum
-    [ Left  <$> parseIslMacro
-    , Right <$> parseTypedC
+
+  statements <- Parser.braces $ P.many1 $ msum
+    [ parseMacro
+    , parseTypeDef
+    , IslMacroStatement <$> parseIslMacro
+    , TypedC            <$> parseTypedC
+    , do
+         _ <- symbol' "ISL_ARG_DECL"
+         _ <- Parser.symbolic '('
+         _ <- Parser.manyTill Parser.anyChar $ Parser.symbolic ')'
+         pure Other
     ]
+
+  _ <- Parser.many parseMacro
+
+  pure $ catMaybes $ statements <&> \case
+    IslMacroStatement x -> Just (Left x)
+    TypedC x            -> Just (Right x)
+    _                   -> Nothing
 
 -- To parse C declarations, we're faced with a bit of a problem: we want
 -- to parse the anti-quotations so that Haskell identifiers are

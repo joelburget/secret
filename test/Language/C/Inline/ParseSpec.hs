@@ -7,10 +7,11 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 module Language.C.Inline.ParseSpec (spec) where
 
 import           Control.Exception (evaluate)
-import           Control.Monad (void)
+import           Control.Monad (void, forM_)
 import           Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import           Test.Hspec
@@ -54,19 +55,6 @@ spec = do
                 unsigned first, unsigned n);
         |]
 
-    it "parses comments" $ do
-      void $ goodParse [r|
-        #ifndef ISL_AFF_H
-        #define ISL_AFF_H
-        #include ...
-        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_copy(
-                __isl_keep isl_pw_multi_aff *pma);
-        __isl_give isl_pw_multi_aff *isl_pw_multi_aff_project_out_map(
-                __isl_take isl_space *space,
-                enum isl_dim_type type,
-                unsigned first, unsigned n);
-        |]
-
     it "parses inlineC" $ do
       void $ goodParse' [r|
         #ifndef ISL_AFF_H
@@ -94,9 +82,10 @@ spec = do
     it "does not parse Haskell identifier in bad position" $ do
       badParse [r| double (*)(double Foo.bar); |]
 
-    it "parses interface" $ do
-      iface <- readFile "isl/include/isl/aff.h"
-      void $ goodParse' iface
+    describe "parsing interface files" $ forM_ interfaceFiles $ \fileName ->
+      it ("parses " ++ fileName) $ do
+        iface <- readFile $ "isl/include/isl/" ++ fileName ++ ".h"
+        void $ goodParse' iface
 
   where
     islListableTypes =
@@ -123,7 +112,6 @@ spec = do
     otherIslValTypes =
       [ "isl_qpolynomial"
       , "isl_qpolynomial_fold"
-      , "isl_pw_qpolynomial_fold"
       , "isl_union_pw_qpolynomial"
       , "isl_space"
       , "isl_local_space"
@@ -157,6 +145,58 @@ spec = do
       , "isl_size"
       , "isl_printer"
       , "isl_stat"
+      , "mpz_t"
+      , "FILE"
+      , "isl_stream"
+      , "isl_term"
+      , "isl_access_info"
+      , "isl_access_level_before"
+      , "isl_access_restrict"
+      , "isl_flow"
+      , "isl_ast_print_options"
+      , "isl_union_pw_qpolynomial_fold"
+      ]
+
+    interfaceFiles =
+      [ "aff"
+      -- , "aff_type"
+      -- , "arg"
+      , "ast"
+      , "ast_build"
+      , "ast_build"
+      -- , "ast_type"
+      , "constraint"
+      -- , "ctx" TODO
+      , "fixed_box"
+      , "flow"
+      -- , "hash"
+      -- , "hmap"
+      -- , "hmap_templ"
+      , "id"
+      -- , "id_type"
+      , "ilp"
+      -- , "list"
+      , "local_space"
+      , "lp"
+      , "map"
+      , "mat"
+      , "options"
+      , "point"
+      , "polynomial"
+      , "printer"
+      , "schedule"
+      , "schedule_node"
+      , "set"
+      , "space"
+      , "stream"
+      , "stride_info"
+      , "union_map"
+      , "union_set"
+      , "val"
+      , "val_gmp"
+      , "vec"
+      , "version"
+      , "vertices"
       ]
 
     mkListIdent (C.CIdentifier x) = C.CIdentifier (x ++ "_list")

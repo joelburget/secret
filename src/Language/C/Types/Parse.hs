@@ -192,7 +192,7 @@ instance MonadReader (CParserContext i) (P i) where
 
 instance TokenParsing (P i) where
   someSpace   = P $ buildSomeSpaceParser someSpace $
-    CommentStyle "" "" "#" False
+    CommentStyle "/*" "*/" "//" False
   nesting     = P . nesting . unParser
   semi        = token $ char ';' <?> ";"
   highlight h = P . highlight h . unParser
@@ -223,7 +223,7 @@ cReservedWords = HashSet.fromList
   , "do", "int", "struct", "double"
 
   , "__isl_give", "__isl_null", "__isl_take", "__isl_keep"
-  , "__isl_export", "__isl_overload", "__isl_constructor"
+  , "__isl_export", "__isl_overload", "__isl_constructor", "__isl_subclass", "ISL_DEPRECATED"
   ]
 
 cIdentStart :: [Char]
@@ -257,6 +257,8 @@ declaration_specifiers = do
     [ reserve cIdentStyle "__isl_export"
     , reserve cIdentStyle "__isl_overload"
     , reserve cIdentStyle "__isl_constructor"
+    , reserve cIdentStyle "__isl_subclass" >> parens cidentifier >> pure ()
+    , reserve cIdentStyle "ISL_DEPRECATED"
     ]
   many1 $ msum
     [ StorageClassSpecifier  <$> storage_class_specifier
